@@ -25,6 +25,14 @@ pub enum Color {
     Rgb(u8, u8, u8),
     Indexed(u8),
 }
+impl Color {
+    const fn or(this: Option<Self>, optb: Option<Self>) -> Option<Self> {
+        match this {
+            Some(_) => this,
+            None => optb,
+        }
+    }
+}
 
 bitflags! {
     /// Modifier changes the way a piece of text is displayed.
@@ -49,6 +57,17 @@ bitflags! {
         const REVERSED          = 0b0000_0100_0000;
         const HIDDEN            = 0b0000_1000_0000;
         const CROSSED_OUT       = 0b0001_0000_0000;
+    }
+}
+
+impl Modifier {
+    #[must_use]
+    const fn const_insert(self, other: Self) -> Self {
+        Self::from_bits_truncate(self.bits() | other.bits())
+    }
+    #[must_use]
+    const fn const_remove(self, other: Self) -> Self {
+        Self::from_bits_truncate(self.bits() & !other.bits())
     }
 }
 
@@ -137,7 +156,7 @@ impl Default for Style {
 
 impl Style {
     /// Returns a `Style` resetting all properties.
-    pub fn reset() -> Style {
+    pub const fn reset() -> Style {
         Style {
             fg: Some(Color::Reset),
             bg: Some(Color::Reset),
@@ -156,7 +175,7 @@ impl Style {
     /// let diff = Style::default().fg(Color::Red);
     /// assert_eq!(style.patch(diff), Style::default().fg(Color::Red));
     /// ```
-    pub fn fg(mut self, color: Color) -> Style {
+    pub const fn fg(mut self, color: Color) -> Style {
         self.fg = Some(color);
         self
     }
@@ -171,7 +190,7 @@ impl Style {
     /// let diff = Style::default().bg(Color::Red);
     /// assert_eq!(style.patch(diff), Style::default().bg(Color::Red));
     /// ```
-    pub fn bg(mut self, color: Color) -> Style {
+    pub const fn bg(mut self, color: Color) -> Style {
         self.bg = Some(color);
         self
     }
@@ -190,9 +209,9 @@ impl Style {
     /// assert_eq!(patched.add_modifier, Modifier::BOLD | Modifier::ITALIC);
     /// assert_eq!(patched.sub_modifier, Modifier::empty());
     /// ```
-    pub fn add_modifier(mut self, modifier: Modifier) -> Style {
-        self.sub_modifier.remove(modifier);
-        self.add_modifier.insert(modifier);
+    pub const fn add_modifier(mut self, modifier: Modifier) -> Style {
+        self.sub_modifier = self.sub_modifier.const_remove(modifier);
+        self.add_modifier = self.add_modifier.const_insert(modifier);
         self
     }
 
@@ -210,9 +229,9 @@ impl Style {
     /// assert_eq!(patched.add_modifier, Modifier::BOLD);
     /// assert_eq!(patched.sub_modifier, Modifier::ITALIC);
     /// ```
-    pub fn remove_modifier(mut self, modifier: Modifier) -> Style {
-        self.add_modifier.remove(modifier);
-        self.sub_modifier.insert(modifier);
+    pub const fn remove_modifier(mut self, modifier: Modifier) -> Style {
+        self.add_modifier = self.add_modifier.const_remove(modifier);
+        self.sub_modifier = self.sub_modifier.const_insert(modifier);
         self
     }
 
@@ -229,14 +248,14 @@ impl Style {
     ///     Style::default().patch(style_1).patch(style_2),
     ///     Style::default().patch(combined));
     /// ```
-    pub fn patch(mut self, other: Style) -> Style {
-        self.fg = other.fg.or(self.fg);
-        self.bg = other.bg.or(self.bg);
+    pub const fn patch(mut self, other: Style) -> Style {
+        self.fg = Color::or(other.fg, self.fg);
+        self.bg = Color::or(other.bg, self.bg);
 
-        self.add_modifier.remove(other.sub_modifier);
-        self.add_modifier.insert(other.add_modifier);
-        self.sub_modifier.remove(other.add_modifier);
-        self.sub_modifier.insert(other.sub_modifier);
+        self.add_modifier = self.add_modifier.const_remove(other.sub_modifier);
+        self.add_modifier = self.add_modifier.const_insert(other.add_modifier);
+        self.sub_modifier = self.sub_modifier.const_remove(other.add_modifier);
+        self.sub_modifier = self.sub_modifier.const_insert(other.sub_modifier);
 
         self
     }
